@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -21,42 +20,6 @@ class SkymapBloc extends Bloc<SkymapEvent, SkymapState> {
     on<SelectCelestialObject>(_onSelectCelestialObject);
     on<DeselectCelestialObject>(_onDeselectCelestialObject);
   }
-  double _getCurrentSunRA() {
-  final now = DateTime.now();
-  final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
-  
-  // Approximation simple de la position du soleil
-  // Position du soleil change d'environ 1 degré par jour
-  final sunLongitude = (dayOfYear * 0.9856) % 360;
-  return sunLongitude / 15.0; // Convertir en heures
-}
-
-double _getCurrentSunDec() {
-  final now = DateTime.now();
-  final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
-  
-  // Déclinaison du soleil varie entre -23.5° et +23.5°
-  final sunDeclination = 23.5 * sin((dayOfYear - 81) * 0.0172);
-  return sunDeclination;
-}
-
-double _getCurrentMoonRA() {
-  final now = DateTime.now();
-  final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
-  
-  // La lune se déplace d'environ 13 degrés par jour
-  final moonLongitude = (dayOfYear * 13.176) % 360;
-  return moonLongitude / 15.0;
-}
-
-double _getCurrentMoonDec() {
-  final now = DateTime.now();
-  final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
-  
-  // Déclinaison de la lune varie entre -28.5° et +28.5°
-  final moonDeclination = 28.5 * sin((dayOfYear - 81) * 0.0172 * 13.176);
-  return moonDeclination;
-}
 
   Future<void> _onInitializeSkymap(
     InitializeSkymap event,
@@ -150,89 +113,146 @@ double _getCurrentMoonDec() {
     emit(state.copyWith(isLoading: true));
 
     try {
+      // For now, we'll use dummy data
       final List<CelestialObject> objects = [
-  // Sun - Position approximative mise à jour
-  CelestialObject(
-    id: 'sun',
-    name: 'Sun',
-    type: CelestialObjectType.sun,
-    rightAscension: _getCurrentSunRA(), // Position dynamique du soleil
-    declination: _getCurrentSunDec(),   // Position dynamique du soleil
-    magnitude: -26.7,
-    description: 'The Sun is the star at the center of the Solar System. It is a nearly perfect sphere of hot plasma, with internal convective motion that generates a magnetic field via a dynamo process.',
-    size: 1919.0,
-  ),
-  
-  // Moon - Position approximative
-  CelestialObject(
-    id: 'moon',
-    name: 'Moon',
-    type: CelestialObjectType.moon,
-    rightAscension: _getCurrentMoonRA(),
-    declination: _getCurrentMoonDec(),
-    magnitude: -12.7,
-    description: 'The Moon is Earth\'s only natural satellite.',
-    size: 1737.0,
-  ),
-  
-  // Mars - Position réelle
-  CelestialObject(
-    id: 'mars',
-    name: 'Mars',
-    type: CelestialObjectType.planet,
-    rightAscension: 14.2, // Position approximative pour septembre 2025
-    declination: -12.5,
-    magnitude: -2.6,
-    description: 'Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System. It is often called the "Red Planet" due to its reddish appearance.',
-    size: 3389.5,
-  ),
-  
-  // Venus - Position réelle
-  CelestialObject(
-    id: 'venus',
-    name: 'Venus',
-    type: CelestialObjectType.planet,
-    rightAscension: 11.8, // Position approximative pour septembre 2025
-    declination: 8.2,
-    magnitude: -4.7,
-    description: 'Venus is the second planet from the Sun and is Earth\'s closest planetary neighbor.',
-    size: 6051.8,
-  ),
-  
-  // Constellations avec vraies coordonnées
-  CelestialObject(
-    id: 'orion',
-    name: 'Orion',
-    type: CelestialObjectType.constellation,
-    rightAscension: 5.5, // Coordonnées correctes d'Orion
-    declination: 0,
-    magnitude: 0,
-    description: 'Orion is a prominent constellation located on the celestial equator and visible throughout the world.',
-    size: 0,
-  ),
-  
-  CelestialObject(
-    id: 'ursa_major',
-    name: 'Ursa Major',
-    type: CelestialObjectType.constellation,
-    rightAscension: 11.3, // Coordonnées correctes de la Grande Ourse
-    declination: 50,
-    magnitude: 0,
-    description: 'Ursa Major is a constellation in the northern sky. Its Latin name means "greater she-bear".',
-    size: 0,
-  ),
-  
-  CelestialObject(
-    id: 'cassiopeia',
-    name: 'Cassiopeia',
-    type: CelestialObjectType.constellation,
-    rightAscension: 1.0, // Coordonnées correctes de Cassiopée
-    declination: 60,
-    magnitude: 0,
-    description: 'Cassiopeia is a constellation in the northern sky, named after the vain queen Cassiopeia in Greek mythology.',
-    size: 0,
-  ),
-];
+        // Sun
+        CelestialObject(
+          id: 'sun',
+          name: 'Sun',
+          type: CelestialObjectType.sun,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: -26.7,
+          description: 'The Sun is the star at the center of the Solar System. It is a nearly perfect sphere of hot plasma, with internal convective motion that generates a magnetic field via a dynamo process.',
+          size: 1919.0,
+        ),
+        
+        // Moon
+        CelestialObject(
+          id: 'moon',
+          name: 'Moon',
+          type: CelestialObjectType.moon,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: -12.7,
+          description: 'The Moon is Earth\'s only natural satellite. It is the fifth largest satellite in the Solar System and the largest and most massive relative to its parent planet.',
+          size: 1737.0,
+        ),
+        
+        // Planets
+        CelestialObject(
+          id: 'mercury',
+          name: 'Mercury',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: -1.9,
+          description: 'Mercury is the smallest and innermost planet in the Solar System. Its orbital period around the Sun of 87.97 days is the shortest of all the planets.',
+          size: 2439.7,
+        ),
+        CelestialObject(
+          id: 'venus',
+          name: 'Venus',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: -4.7,
+          description: 'Venus is the second planet from the Sun and is Earth\'s closest planetary neighbor. It\'s one of the four inner, terrestrial planets, and it\'s often called Earth\'s twin because it\'s similar in size and density.',
+          size: 6051.8,
+        ),
+        CelestialObject(
+          id: 'earth',
+          name: 'Earth',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: 0,
+          description: 'Earth is the third planet from the Sun and the only astronomical object known to harbor life. About 71% of Earth\'s surface is covered with water.',
+          size: 6371.0,
+        ),
+        CelestialObject(
+          id: 'mars',
+          name: 'Mars',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: -2.6,
+          description: 'Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System. It is often called the "Red Planet" due to its reddish appearance.',
+          size: 3389.5,
+        ),
+        CelestialObject(
+          id: 'jupiter',
+          name: 'Jupiter',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: -2.2,
+          description: 'Jupiter is the fifth planet from the Sun and the largest in the Solar System. It is a gas giant with a mass more than two and a half times that of all the other planets combined.',
+          size: 69911.0,
+        ),
+        CelestialObject(
+          id: 'saturn',
+          name: 'Saturn',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: 0.5,
+          description: 'Saturn is the sixth planet from the Sun and the second-largest in the Solar System, after Jupiter. It is a gas giant with an average radius of about nine and a half times that of Earth.',
+          size: 58232.0,
+        ),
+        CelestialObject(
+          id: 'uranus',
+          name: 'Uranus',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: 5.3,
+          description: 'Uranus is the seventh planet from the Sun. It has the third-largest planetary radius and fourth-largest planetary mass in the Solar System.',
+          size: 25362.0,
+        ),
+        CelestialObject(
+          id: 'neptune',
+          name: 'Neptune',
+          type: CelestialObjectType.planet,
+          rightAscension: 0,
+          declination: 0,
+          magnitude: 7.8,
+          description: 'Neptune is the eighth and farthest known planet from the Sun. It is the fourth-largest planet by diameter and the third-most-massive.',
+          size: 24622.0,
+        ),
+        
+        // Constellations
+        CelestialObject(
+          id: 'orion',
+          name: 'Orion',
+          type: CelestialObjectType.constellation,
+          rightAscension: 5.5,
+          declination: 0,
+          magnitude: 0,
+          description: 'Orion is a prominent constellation located on the celestial equator and visible throughout the world. It is one of the most conspicuous and recognizable constellations in the night sky.',
+          size: 0,
+        ),
+        CelestialObject(
+          id: 'ursa_major',
+          name: 'Ursa Major',
+          type: CelestialObjectType.constellation,
+          rightAscension: 11.3,
+          declination: 50,
+          magnitude: 0,
+          description: 'Ursa Major is a constellation in the northern sky, whose associated mythology likely dates back into prehistory. Its Latin name means "greater (or larger) she-bear".',
+          size: 0,
+        ),
+        CelestialObject(
+          id: 'cassiopeia',
+          name: 'Cassiopeia',
+          type: CelestialObjectType.constellation,
+          rightAscension: 1.0,
+          declination: 60,
+          magnitude: 0,
+          description: 'Cassiopeia is a constellation in the northern sky, named after the vain queen Cassiopeia in Greek mythology, who boasted about her unrivaled beauty.',
+          size: 0,
+        ),
+      ];
 
       emit(state.copyWith(
         celestialObjects: objects,

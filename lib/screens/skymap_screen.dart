@@ -219,7 +219,8 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.1),
+                        color: 
+                        withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.white.withOpacity(0.3)),
                       ),
