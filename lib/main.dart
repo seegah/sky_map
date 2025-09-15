@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.system, // Automatically use system theme
+      themeMode: ThemeMode.system,
       home: BlocProvider(
         create: (context) => SkymapBloc(),
         child: const SkymapScreen(),
