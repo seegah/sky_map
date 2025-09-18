@@ -13,6 +13,7 @@ import '../bloc/skymap/skymap_state.dart';
 import '../models/celestial_object.dart';
 import '../utils/astronomy_utils.dart';
 import '../widgets/celestial_object_widget.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class SkymapScreen extends StatefulWidget {
   const SkymapScreen({super.key});
@@ -21,17 +22,18 @@ class SkymapScreen extends StatefulWidget {
   State<SkymapScreen> createState() => _SkymapScreenState();
 }
 
-class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMixin {
+class _SkymapScreenState extends State<SkymapScreen>
+    with TickerProviderStateMixin {
   late AnimationController _animationController;
   late AnimationController _fadeController;
   Timer? _updateTimer;
   String _statusMessage = 'Initialisation...';
   bool _showUI = true;
-  
+
   // Add position smoothing with increased smoothing factor
   final Map<String, Offset> _smoothedPositions = {};
   static const int _smoothingFactor = 15;
-  
+
   // Add a debounce timer to prevent too frequent updates
   Timer? _debounceTimer;
   static const Duration _debounceDuration = Duration(milliseconds: 100);
@@ -43,51 +45,78 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
       vsync: this,
       duration: const Duration(milliseconds: 100),
     )..repeat();
-    
+
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
       value: 1.0,
     );
-    
+
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
-    // Check location permission
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      setState(() => _statusMessage = 'Demande d\'autorisation de localisation...');
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        setState(() => _statusMessage = 'Autorisation de localisation refusée');
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      setState(() => _statusMessage = 'Autorisation de localisation définitivement refusée');
-      return;
-    }
-
-    // Check if location services are enabled
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      setState(() => _statusMessage = 'Services de localisation désactivés');
-      return;
-    }
-
-    setState(() => _statusMessage = 'Obtention de la position...');
-    
-    // Initialize the app with screen dimensions
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final size = MediaQuery.of(context).size;
-      context.read<SkymapBloc>().add(
-            InitializeSkymap(
-              screenWidth: size.width,
-              screenHeight: size.height,
-            ),
+    try {
+      // Check location permission only if not on web
+      if (!kIsWeb) {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          setState(
+            () => _statusMessage = 'Demande d\'autorisation de localisation...',
           );
+          permission = await Geolocator.requestPermission();
+          if (permission == LocationPermission.denied) {
+            setState(() => _statusMessage = 'Autorisation de localisation refusée');
+            _initializeWithoutLocation();
+            return;
+          }
+        }
+
+        if (permission == LocationPermission.deniedForever) {
+          setState(
+            () =>
+                _statusMessage =
+                    'Autorisation de localisation définitivement refusée',
+          );
+          _initializeWithoutLocation();
+          return;
+        }
+
+        // Check if location services are enabled
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          setState(() => _statusMessage = 'Services de localisation désactivés');
+          _initializeWithoutLocation();
+          return;
+        }
+      }
+
+      setState(() => _statusMessage = 'Obtention de la position...');
+
+      // Initialize the app with screen dimensions
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final size = MediaQuery.of(context).size;
+          context.read<SkymapBloc>().add(
+            InitializeSkymap(screenWidth: size.width, screenHeight: size.height),
+          );
+        }
+      });
+    } catch (e) {
+      print('Error during initialization: $e');
+      _initializeWithoutLocation();
+    }
+  }
+
+  void _initializeWithoutLocation() {
+    setState(() => _statusMessage = 'Initialisation sans localisation...');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final size = MediaQuery.of(context).size;
+        context.read<SkymapBloc>().add(
+          InitializeSkymap(screenWidth: size.width, screenHeight: size.height),
+        );
+      }
     });
   }
 
@@ -127,8 +156,10 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
 
           // Start update timer
           _updateTimer?.cancel();
-          _updateTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
-            if (state.location != null) {
+          _updateTimer = Timer.periodic(const Duration(milliseconds: 1000), (
+            _,
+          ) {
+            if (mounted) {
               setState(() {});
             }
           });
@@ -151,13 +182,13 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                     ),
                   ),
                 ),
-                
+
                 // Background stars with twinkling effect
                 _buildEnhancedStarBackground(),
-                
+
                 // Grid overlay (optional)
                 if (_showUI) _buildGridOverlay(),
-                
+
                 // Celestial objects
                 ...state.celestialObjects.map((object) {
                   final rawPosition = _calculateObjectPosition(
@@ -168,67 +199,42 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                     state.screenWidth,
                     state.screenHeight,
                   );
-                  
-                  final smoothedPosition = _getSmoothedPosition(object.id, rawPosition);
-                  
-                  return CelestialObjectWidget(
-                    object: object,
-                    x: smoothedPosition.dx,
-                    y: smoothedPosition.dy,
-                    size: _calculateObjectSize(object, state.screenWidth),
-                    onTap: () {
-                      _debounceTimer?.cancel();
-                      _debounceTimer = Timer(_debounceDuration, () {
-                        context.read<SkymapBloc>().add(SelectCelestialObject(object));
-                      });
-                    },
+
+                  final smoothedPosition = _getSmoothedPosition(
+                    object.id,
+                    rawPosition,
+                  );
+
+                  return Positioned(
+                    left: smoothedPosition.dx - _calculateObjectSize(object, state.screenWidth) / 2,
+                    top: smoothedPosition.dy - _calculateObjectSize(object, state.screenWidth) / 2,
+                    child: CelestialObjectWidget(
+                      object: object,
+                      x: 0, // Position géré par Positioned
+                      y: 0, // Position géré par Positioned
+                      size: _calculateObjectSize(object, state.screenWidth),
+                      onTap: () {
+                        _debounceTimer?.cancel();
+                        _debounceTimer = Timer(_debounceDuration, () {
+                          context.read<SkymapBloc>().add(
+                            SelectCelestialObject(object),
+                          );
+                        });
+                      },
+                    ),
                   );
                 }),
-                
-                // Top UI Panel
-                if (_showUI) _buildTopPanel(state),
-                
-                // Bottom UI Panel with compass
-                if (_showUI) _buildBottomPanel(state),
-                
-                // Side panel with object types
-                if (_showUI) _buildSidePanel(),
-                
-                // Selected object details (full screen overlay)
+
+                // UI Panels - Wrapped in SafeArea and properly positioned
+                ..._buildUIElements(state),
+
+                // Selected object details
                 if (state.selectedObject != null)
-                  Container(
-                    color: Colors.black.withOpacity(0.8),
-                    child: Center(
-                      child: CelestialObjectDetails(
-                        object: state.selectedObject!,
-                        onClose: () {
-                          _debounceTimer?.cancel();
-                          _debounceTimer = Timer(_debounceDuration, () {
-                            context.read<SkymapBloc>().add(DeselectCelestialObject());
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                
-                // UI toggle hint
-                if (!_showUI)
-                  Positioned(
-                    bottom: 20,
-                    right: 20,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: 
-                        Colors.black.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.3)),
-                      ),
-                      child: const Text(
-                        'Toucher pour afficher l\'interface',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ),
+                  CelestialObjectDetails(
+                    object: state.selectedObject!,
+                    onClose: () {
+                      context.read<SkymapBloc>().add(DeselectCelestialObject());
+                    },
                   ),
               ],
             ),
@@ -236,6 +242,44 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
         },
       ),
     );
+  }
+
+  List<Widget> _buildUIElements(SkymapState state) {
+    if (!_showUI) {
+      return [
+        // UI toggle hint
+        Positioned(
+          bottom: 20,
+          right: 20,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+              ),
+            ),
+            child: const Text(
+              'Toucher pour afficher l\'interface',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return [
+      // Top UI Panel
+      _buildTopPanel(state),
+      // Bottom UI Panel with compass
+      _buildBottomPanel(state),
+      // Side panel with object types
+      _buildSidePanel(),
+    ];
   }
 
   Widget _buildLoadingScreen() {
@@ -254,7 +298,10 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.blue.withOpacity(0.3), width: 2),
+                border: Border.all(
+                  color: Colors.blue.withOpacity(0.3),
+                  width: 2,
+                ),
               ),
               child: Stack(
                 children: [
@@ -265,17 +312,13 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                     ),
                   ),
                   const Center(
-                    child: Icon(
-                      Icons.explore,
-                      color: Colors.white,
-                      size: 32,
-                    ),
+                    child: Icon(Icons.explore, color: Colors.white, size: 32),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            Text(
+            const Text(
               'Sky Map',
               style: TextStyle(
                 color: Colors.white,
@@ -287,10 +330,7 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
             const SizedBox(height: 12),
             Text(
               _statusMessage,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
               textAlign: TextAlign.center,
             ),
           ],
@@ -310,13 +350,9 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              color: Colors.red.shade300,
-              size: 64,
-            ),
+            Icon(Icons.error_outline, color: Colors.red.shade300, size: 64),
             const SizedBox(height: 24),
-            Text(
+            const Text(
               'Erreur',
               style: TextStyle(
                 color: Colors.white,
@@ -329,10 +365,7 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Text(
                 error,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 16,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 16),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -344,7 +377,10 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue.shade700,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
               ),
             ),
           ],
@@ -354,22 +390,19 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
   }
 
   Widget _buildTopPanel(SkymapState state) {
-    return FadeTransition(
-      opacity: _fadeController,
-      child: Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: FadeTransition(
+        opacity: _fadeController,
         child: Container(
           height: 100,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.8),
-                Colors.transparent,
-              ],
+              colors: [Colors.black.withOpacity(0.8), Colors.transparent],
             ),
           ),
           child: SafeArea(
@@ -422,22 +455,19 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
   }
 
   Widget _buildBottomPanel(SkymapState state) {
-    return FadeTransition(
-      opacity: _fadeController,
-      child: Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: FadeTransition(
+        opacity: _fadeController,
         child: Container(
           height: 80,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [
-                Colors.black.withOpacity(0.8),
-                Colors.transparent,
-              ],
+              colors: [Colors.black.withOpacity(0.8), Colors.transparent],
             ),
           ),
           child: SafeArea(
@@ -462,7 +492,9 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                             height: 40,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white.withOpacity(0.2)),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                              ),
                             ),
                           ),
                         ),
@@ -493,7 +525,10 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                   const Spacer(),
                   // Direction indicator
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(20),
@@ -512,7 +547,10 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                   const Spacer(),
                   // Time info
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(15),
@@ -520,10 +558,7 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
                     ),
                     child: Text(
                       '${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ),
                 ],
@@ -536,11 +571,11 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
   }
 
   Widget _buildSidePanel() {
-    return FadeTransition(
-      opacity: _fadeController,
-      child: Positioned(
-        left: 16,
-        top: 120,
+    return Positioned(
+      left: 16,
+      top: 120,
+      child: FadeTransition(
+        opacity: _fadeController,
         child: Container(
           width: 60,
           decoration: BoxDecoration(
@@ -575,11 +610,7 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withOpacity(0.2)),
         ),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: 20,
-        ),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
@@ -600,11 +631,7 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
               width: isActive ? 2 : 1,
             ),
           ),
-          child: Icon(
-            icon,
-            color: isActive ? color : Colors.white70,
-            size: 24,
-          ),
+          child: Icon(icon, color: isActive ? color : Colors.white70, size: 24),
         ),
       ),
     );
@@ -623,10 +650,7 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
   }
 
   Widget _buildGridOverlay() {
-    return CustomPaint(
-      painter: GridOverlayPainter(),
-      size: Size.infinite,
-    );
+    return CustomPaint(painter: GridOverlayPainter(), size: Size.infinite);
   }
 
   // Rest of your existing methods remain the same...
@@ -635,22 +659,27 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
       _smoothedPositions[objectId] = newPosition;
       return newPosition;
     }
-    
+
     final currentPosition = _smoothedPositions[objectId]!;
     final distance = (newPosition - currentPosition).distance;
-    
+
     if (distance < 1.0) {
       return currentPosition;
     }
-    
-    final smoothingFactor = distance > 50.0 ? _smoothingFactor * 2 : _smoothingFactor;
-    
-    final smoothedX = currentPosition.dx + (newPosition.dx - currentPosition.dx) / smoothingFactor;
-    final smoothedY = currentPosition.dy + (newPosition.dy - currentPosition.dy) / smoothingFactor;
-    
+
+    final smoothingFactor =
+        distance > 50.0 ? _smoothingFactor * 2 : _smoothingFactor;
+
+    final smoothedX =
+        currentPosition.dx +
+        (newPosition.dx - currentPosition.dx) / smoothingFactor;
+    final smoothedY =
+        currentPosition.dy +
+        (newPosition.dy - currentPosition.dy) / smoothingFactor;
+
     final smoothedPosition = Offset(smoothedX, smoothedY);
     _smoothedPositions[objectId] = smoothedPosition;
-    
+
     return smoothedPosition;
   }
 
@@ -668,15 +697,23 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
       final y = random.nextDouble() * screenHeight;
       return Offset(x, y);
     }
-    
-    return AstronomyUtils.calculateScreenPosition(
-      object,
-      location,
-      accelerometerData,
-      magnetometerData,
-      screenWidth,
-      screenHeight,
-    );
+
+    try {
+      return AstronomyUtils.calculateScreenPosition(
+        object,
+        location,
+        accelerometerData,
+        magnetometerData,
+        screenWidth,
+        screenHeight,
+      );
+    } catch (e) {
+      // Fallback en cas d'erreur
+      final random = Random(object.id.hashCode);
+      final x = random.nextDouble() * screenWidth;
+      final y = random.nextDouble() * screenHeight;
+      return Offset(x, y);
+    }
   }
 
   double _calculateObjectSize(CelestialObject object, double screenWidth) {
@@ -693,31 +730,29 @@ class _SkymapScreenState extends State<SkymapScreen> with TickerProviderStateMix
         return screenWidth * 0.15;
     }
   }
-
-
 }
 
 class EnhancedStarBackgroundPainter extends CustomPainter {
   final double animationValue;
-  
+
   EnhancedStarBackgroundPainter(this.animationValue);
 
   @override
   void paint(Canvas canvas, Size size) {
     final random = Random(42);
     final paint = Paint();
-    
+
     // Draw stars with twinkling effect
     for (int i = 0; i < 300; i++) {
       final x = random.nextDouble() * size.width;
       final y = random.nextDouble() * size.height;
       final baseRadius = random.nextDouble() * 2 + 0.5;
-      
+
       // Twinkling effect
       final twinkle = sin((animationValue * 2 * pi) + (i * 0.1)) * 0.5 + 0.5;
       final radius = baseRadius * (0.7 + twinkle * 0.3);
       final opacity = 0.3 + twinkle * 0.7;
-      
+
       paint.color = Colors.white.withOpacity(opacity);
       canvas.drawCircle(Offset(x, y), radius, paint);
     }
@@ -730,15 +765,16 @@ class EnhancedStarBackgroundPainter extends CustomPainter {
 class GridOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
-      ..strokeWidth = 0.5;
-    
+    final paint =
+        Paint()
+          ..color = Colors.white.withOpacity(0.1)
+          ..strokeWidth = 0.5;
+
     // Draw vertical lines
     for (double x = 0; x <= size.width; x += size.width / 8) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
-    
+
     // Draw horizontal lines
     for (double y = 0; y <= size.height; y += size.height / 8) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
